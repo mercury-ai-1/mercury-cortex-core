@@ -1,0 +1,85 @@
+name: Release
+
+# Only release on version tags: git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to crates.io
+    # Required: env-scoped secret. Configure environment "release" in
+    # repo Settings -> Environments with CARGO_REGISTRY_TOKEN.
+    environment: release
+    runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      # ---- Validation (fail fast before anything is published) ----
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo test --all-features
+
+      - name: Verify tag matches Cargo.toml version
+        id: verify
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          pkg_version="$(cargo metadata --no-deps --format-version 1 | \
+            python3 -c 'import sys,json; print(json.load(sys.stdin)["packages"][0]["version"])')"
+          tag_version="${TAG#v}"
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::Tag '${TAG}' does not match package version '${pkg_version}'."
+            echo "Push the correct tag (git tag v${pkg_version} && git push origin v${pkg_version})"
+            exit 1
+          fi
+          echo "Tag v${tag_version} matches Cargo.toml version ${pkg_version}."
+          echo "version=${tag_version}" >> "$GITHUB_OUTPUT"
+
+      # ---- Safe publishing (prevents duplicate publishes) ----
+
+      - name: Verify package
+        run: cargo package --locked
+
+      - name: Check if version already published
+        id: exists
+        env:
+          VERSION: ${{ steps.verify.outputs.version }}
+        run: |
+          http_code="$(curl -s -o /dev/null -w '%{http_code}' \
+            "https://crates.io/api/v1/crates/mercury-cortex-core/${VERSION}")"
+          if [ "$http_code" = "200" ]; then
+            echo "Version ${VERSION} already exists on crates.io. Skipping publish."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version ${VERSION} not yet published. Proceeding."
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to crates.io
+        if: steps.exists.outputs.published == 'false'
+        run: cargo publish --locked
