@@ -8,8 +8,28 @@ use fs2::FileExt;
 use surrealdb::Surreal;
 use surrealdb::engine::local::{Db, SurrealKv};
 
-/// Resolve `~/.mercury/cortex/` via the cross-platform `dirs` crate.
+/// Resolve the data directory.
+///
+/// Precedence:
+/// 1. `MERCURY_CORTEX_DATA_DIR` — explicit override (used by tests and by
+///    users who want to relocate the data directory). The value is used
+///    verbatim, so it must point at the data directory itself (the
+///    `~/.mercury/cortex` equivalent), not a home directory.
+/// 2. `~/.mercury/cortex/` via the cross-platform `dirs` crate.
+///
+/// On Unix, `dirs::home_dir()` honours `$HOME`; on Windows it calls
+/// `SHGetKnownFolderPath` and ignores `USERPROFILE`/`HOME`, so the env
+/// override is the only reliable way to redirect the data directory there.
 pub fn data_dir() -> Result<PathBuf, std::io::Error> {
+    if let Some(dir) = std::env::var_os("MERCURY_CORTEX_DATA_DIR") {
+        if dir.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "MERCURY_CORTEX_DATA_DIR must not be empty",
+            ));
+        }
+        return Ok(PathBuf::from(dir));
+    }
     dirs::home_dir()
         .map(|h| h.join(".mercury").join("cortex"))
         .ok_or_else(|| {

@@ -60,3 +60,30 @@ fn lock_is_held_false_after_holder_releases() {
     drop(holder);
     assert!(!lock_is_held(tmp.path()).unwrap());
 }
+
+/// `MERCURY_CORTEX_DATA_DIR` overrides the resolved data directory verbatim.
+///
+/// All assertions live in one test because the override is a process-global
+/// env var; splitting them across `#[test]` fns would race under the parallel
+/// test runner.
+#[test]
+fn data_dir_env_override_wins_over_home() {
+    let tmp = TempDir::new().unwrap();
+    let target = tmp.path().join("custom").join("nested");
+
+    unsafe { std::env::set_var("MERCURY_CORTEX_DATA_DIR", &target) };
+    let resolved = mercury_cortex_core::db::data_dir().unwrap();
+    assert_eq!(resolved, target);
+    unsafe { std::env::remove_var("MERCURY_CORTEX_DATA_DIR") };
+
+    // Empty override is rejected rather than silently resolving to "".
+    unsafe { std::env::set_var("MERCURY_CORTEX_DATA_DIR", "") };
+    assert!(mercury_cortex_core::db::data_dir().is_err());
+    unsafe { std::env::remove_var("MERCURY_CORTEX_DATA_DIR") };
+
+    // Without the override, home_dir is used (either $HOME or the platform
+    // profile dir) — just assert it resolves and is absolute.
+    let home_based = mercury_cortex_core::db::data_dir().unwrap();
+    assert!(home_based.is_absolute());
+    assert_eq!(home_based.file_name().unwrap(), "cortex");
+}
