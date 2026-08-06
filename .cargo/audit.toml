@@ -1,0 +1,17 @@
+# cargo-audit configuration.
+# Every ignored advisory must be documented. Re-evaluate ignores when
+# bumping the pinned `surrealdb` version (see Cargo.toml).
+
+[advisories]
+ignore = [
+    # RUSTSEC-2026-0235: rkyv < 0.8.17 OOB reads with Rc/Arc archives.
+    # Transitive via rust_decimal (surrealdb tree). Fix requires a major
+    # upstream bump not exposed by surrealdb =3.2.3. Not exploitable here:
+    # crate never deserializes untrusted rkyv archives.
+    "RUSTSEC-2026-0235",
+
+    # RUSTSEC-2023-0071: rsa 0.9.10 Marvin attack (timing side-channel).
+    # Transitive via jsonwebtoken (surrealdb tree). Advisory states
+    # "No fixed upgrade is available!" — cannot be resolved upstream.
+    "RUSTSEC-2023-0071",
+]

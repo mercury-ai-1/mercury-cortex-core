@@ -8,9 +8,7 @@ use std::path::Path;
 use serde_json::json;
 use tempfile::TempDir;
 
-use mercury_cortex_core::db::export::{
-    ExportFilter, export_tables, list_tables, table_has_field,
-};
+use mercury_cortex_core::db::export::{ExportFilter, export_tables, list_tables, table_has_field};
 use mercury_cortex_core::db::initialize;
 use mercury_cortex_core::schema;
 
@@ -62,8 +60,16 @@ async fn list_tables_excludes_internal_and_sorts() {
 async fn table_has_field_detects_project_id() {
     let tmp = TempDir::new().unwrap();
     let db = seed(tmp.path()).await;
-    assert!(table_has_field(&db, "file_data", "project_id").await.unwrap());
-    assert!(!table_has_field(&db, "projects", "project_id").await.unwrap());
+    assert!(
+        table_has_field(&db, "file_data", "project_id")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !table_has_field(&db, "projects", "project_id")
+            .await
+            .unwrap()
+    );
     assert!(!table_has_field(&db, "users", "project_id").await.unwrap());
 }
 
@@ -104,10 +110,7 @@ async fn export_all_tables_writes_every_present_table() {
     let summary = export_tables(&db, &tables, &[], &out).await.unwrap();
     assert_eq!(summary.files.len(), tables.len());
     for t in &tables {
-        assert!(
-            out.join(format!("{t}.json")).exists(),
-            "missing {t}.json"
-        );
+        assert!(out.join(format!("{t}.json")).exists(), "missing {t}.json");
     }
 }
 
@@ -115,7 +118,9 @@ async fn export_all_tables_writes_every_present_table() {
 async fn empty_table_writes_empty_array() {
     let tmp = TempDir::new().unwrap();
     let db = seed(tmp.path()).await;
-    db.query("DEFINE TABLE IF NOT EXISTS empty_tbl").await.unwrap();
+    db.query("DEFINE TABLE IF NOT EXISTS empty_tbl")
+        .await
+        .unwrap();
     let out = tmp.path().join("out");
 
     let summary = export_tables(&db, &["empty_tbl".into()], &[], &out)
@@ -158,10 +163,12 @@ async fn filter_on_table_without_field_exports_unfiltered_and_skips() {
         .await
         .unwrap();
     assert_eq!(summary.files[0].rows, 1);
-    assert!(summary
-        .skipped_filters
-        .iter()
-        .any(|s| s.contains("users") && s.contains("project_id")));
+    assert!(
+        summary
+            .skipped_filters
+            .iter()
+            .any(|s| s.contains("users") && s.contains("project_id"))
+    );
 
     let content = std::fs::read_to_string(out.join("users.json")).unwrap();
     let rows: serde_json::Value = serde_json::from_str(&content).unwrap();
